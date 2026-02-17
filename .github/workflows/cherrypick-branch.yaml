@@ -220,7 +220,10 @@ jobs:
       - name: Commit and push resolved cherry-pick
         if: steps.check-markers.outputs.has_markers == 'false'
         id: push-resolved
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           GIT_EDITOR=true git cherry-pick --continue || git commit --no-edit
           git push --set-upstream origin ${{ needs.cherrypick.outputs.prbranch }}
 
@@ -265,7 +268,10 @@ jobs:
       - name: Handle unresolved conflicts - commit partial work
         if: steps.check-markers.outputs.has_markers == 'true'
         id: push-unresolved
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           # Commit the current state including Claude's partial resolutions
           # and any remaining conflict markers as-is
           git add -A
