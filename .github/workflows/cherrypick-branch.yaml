@@ -139,10 +139,13 @@ jobs:
 
       - name: Create cherry-pick branch and reproduce conflicts
         id: reproduce
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
           git config --global --add safe.directory /github/workspace
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
 
           git checkout -b ${{ needs.cherrypick.outputs.prbranch }}
 
