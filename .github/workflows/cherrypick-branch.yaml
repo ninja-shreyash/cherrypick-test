@@ -1,0 +1,313 @@
+---
+# Creates a new branch from the base branch
+# Cherry-picks commit changes from pull request branch where workflow is initiated
+# A new pull request to the base branch is created from the new branch
+# Workflow is initiated when the following comment is created in the pull request:
+# /cherry-pick <base-branch> or /cherrypick <base-branch>
+# The specified base branch and the pull request branch must not be deleted when using the /cherry-pick command
+# If cherry-pick has merge conflicts, Claude Code will attempt to resolve them automatically
+name: Cherry-pick Branch
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  cherrypick:
+    name: Cherry-pick
+    if: >-
+      github.event.issue.pull_request &&
+      (contains(github.event.comment.body, '/cherrypick') || contains(github.event.comment.body, '/cherry-pick'))
+    runs-on: ubuntu-latest
+    outputs:
+      has_conflicts: ${{ steps.cherry-pick.outputs.has_conflicts }}
+      prbranch: ${{ steps.set-env.outputs.prbranch }}
+      branch: ${{ steps.set-env.outputs.branch }}
+      head_ref: ${{ steps.comment-branch.outputs.head_ref }}
+      pr_number: ${{ github.event.issue.number }}
+      pr_title: ${{ github.event.issue.title }}
+    steps:
+      - name: Get PR branch
+        uses: xt0rted/pull-request-comment-branch@d97294d304604fa98a2600a6e2f916a84b596dc7 #v2
+        id: comment-branch
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set environment variable for branch argument
+        id: set-env
+        run: |
+          body="$COMMENT_BODY"
+          stringarray=($body)
+          echo "branch=${stringarray[1]}" >> $GITHUB_ENV
+          echo "branch=${stringarray[1]}" >> $GITHUB_OUTPUT
+          PRBRANCH="cherrypick-workflow/$(date +%Y%m%dT%H%M%S)/${{ steps.comment-branch.outputs.head_ref }}"
+          echo "prbranch=$PRBRANCH" >> $GITHUB_ENV
+          echo "prbranch=$PRBRANCH" >> $GITHUB_OUTPUT
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+
+      - name: Download repo and checkout base branch argument
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.branch }}
+          fetch-depth: 0
+
+      - name: Create a new branch
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git config --global --add safe.directory /github/workspace
+          git checkout -b ${{ env.prbranch }}
+          git push --set-upstream origin ${{ env.prbranch }}
+
+      - name: Cherry-pick commits from pull request branch
+        id: cherry-pick
+        run: |
+          set +e
+          git cherry-pick $(git merge-base origin/${{ steps.comment-branch.outputs.head_ref }} origin/main)..$(git log -n 1 --pretty=format:"%H" origin/${{ steps.comment-branch.outputs.head_ref }})
+          cherry_pick_exit=$?
+          set -e
+
+          if [ $cherry_pick_exit -eq 0 ]; then
+            exit 0
+          fi
+
+          # Check if failure was due to merge conflicts
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "has_conflicts=true" >> "$GITHUB_OUTPUT"
+            git cherry-pick --abort || true
+            exit 0
+          fi
+
+          # Non-conflict failure
+          exit $cherry_pick_exit
+
+      - name: Push cherry-picked commits
+        if: steps.cherry-pick.outputs.has_conflicts != 'true'
+        run: git push
+
+      - name: Create New Pull Request
+        if: steps.cherry-pick.outputs.has_conflicts != 'true'
+        run: |
+          gh pr create -t "(${{ env.branch }}) ${PR_TITLE}" -b "Cherry-pick of: #${{ github.event.issue.number }}" --base "${{ env.branch }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.issue.title }}
+
+      - name: Message success
+        if: steps.cherry-pick.outputs.has_conflicts != 'true' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Cherry-pick to `${{ env.branch }}` succeeded. :tada:',
+            });
+
+      - name: Message failure
+        if: steps.cherry-pick.outputs.has_conflicts != 'true' && failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Cherry-pick failed. Please check [GitHub Actions run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for errors.',
+            });
+
+  resolve-conflicts:
+    name: Resolve conflicts with Claude
+    needs: cherrypick
+    if: needs.cherrypick.outputs.has_conflicts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.cherrypick.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Create cherry-pick branch and reproduce conflicts
+        id: reproduce
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git config --global --add safe.directory /github/workspace
+
+          git checkout -b ${{ needs.cherrypick.outputs.prbranch }}
+
+          HEAD_REF="${{ needs.cherrypick.outputs.head_ref }}"
+          MERGE_BASE=$(git merge-base "origin/${HEAD_REF}" origin/main)
+          PR_HEAD=$(git log -n 1 --pretty=format:"%H" "origin/${HEAD_REF}")
+
+          git cherry-pick "${MERGE_BASE}..${PR_HEAD}" || true
+
+          CONFLICT_FILES=$(git diff --name-only --diff-filter=U || true)
+          echo "conflict_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONFLICT_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Get original PR diff
+        run: |
+          gh pr diff ${{ needs.cherrypick.outputs.pr_number }} > /tmp/original-pr.diff
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve conflicts with Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are resolving git merge conflicts from a cherry-pick operation.
+
+            ## Original PR
+            - **PR #${{ needs.cherrypick.outputs.pr_number }}**: ${{ needs.cherrypick.outputs.pr_title }}
+
+            ## What happened
+            The original PR was on branch `${{ needs.cherrypick.outputs.head_ref }}` based on `main`.
+            We are cherry-picking those commits onto `${{ needs.cherrypick.outputs.branch }}`.
+            Conflicts occurred because `${{ needs.cherrypick.outputs.branch }}` has diverged from `main`.
+
+            ## Original PR diff
+            The file /tmp/original-pr.diff contains the full diff from the original PR.
+            Read it to understand what changes the PR intended to make.
+
+            ## Conflicting files
+            ${{ steps.reproduce.outputs.conflict_files }}
+
+            ## Instructions
+            1. Run `git status` to see all conflicting files
+            2. Read /tmp/original-pr.diff to understand the original PR's intent
+            3. For each conflicting file:
+               a. Read the file to see the conflict markers (<<<<<<< HEAD ... ======= ... >>>>>>> ...)
+               b. The HEAD side is the current state of `${{ needs.cherrypick.outputs.branch }}`
+               c. The incoming side is the change from the original PR
+               d. Resolve by applying the INTENT of the original PR onto the target branch's code
+               e. If target branch doesn't have code that the PR modified, add the PR's new code
+               f. If target branch has refactored/renamed things, adapt the PR's changes accordingly
+               g. Use the Edit tool to replace the conflicted section with the resolved code
+               h. Run `git add <file>` to mark it resolved
+            4. After all files, run: grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md"
+            5. If any markers remain, resolve those too
+            6. Do NOT run `git commit` — just resolve and stage all files
+          claude_args: >-
+            --allowed-tools "Read,Edit,Grep,Glob,Bash(git diff:*),Bash(git add:*),Bash(git status:*),Bash(git log:*),Bash(grep:*)"
+            --max-turns 30
+
+      - name: Check for remaining conflict markers
+        id: check-markers
+        run: |
+          if grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.js" 2>/dev/null; then
+            echo "has_markers=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_markers=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push resolved cherry-pick
+        if: steps.check-markers.outputs.has_markers == 'false'
+        id: push-resolved
+        run: |
+          GIT_EDITOR=true git cherry-pick --continue || git commit --no-edit
+          git push --set-upstream origin ${{ needs.cherrypick.outputs.prbranch }}
+
+      - name: Create PR for resolved cherry-pick
+        if: steps.check-markers.outputs.has_markers == 'false'
+        id: create-pr
+        run: |
+          PR_URL=$(gh pr create \
+            -t "(${{ needs.cherrypick.outputs.branch }}) ${{ needs.cherrypick.outputs.pr_title }}" \
+            -b "Cherry-pick of: #${{ needs.cherrypick.outputs.pr_number }}" \
+            --base "${{ needs.cherrypick.outputs.branch }}")
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment AI-resolved success
+        if: steps.check-markers.outputs.has_markers == 'false'
+        uses: actions/github-script@v7
+        env:
+          CONFLICT_FILES: ${{ steps.reproduce.outputs.conflict_files }}
+          TARGET_BRANCH: ${{ needs.cherrypick.outputs.branch }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
+        with:
+          script: |
+            const fileList = process.env.CONFLICT_FILES.trim().split('\n').map(f => `- \`${f}\``).join('\n');
+            const body = [
+              `Cherry-pick to \`${process.env.TARGET_BRANCH}\` had merge conflicts that were resolved by Claude Code. :robot:`,
+              `Created PR: ${process.env.PR_URL}`,
+              '',
+              '**AI-resolved files:**',
+              fileList,
+              '',
+              'Please review the conflict resolutions carefully before merging.',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: ${{ needs.cherrypick.outputs.pr_number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Handle unresolved conflicts - commit partial work
+        if: steps.check-markers.outputs.has_markers == 'true'
+        id: push-unresolved
+        run: |
+          # Commit the current state including Claude's partial resolutions
+          # and any remaining conflict markers as-is
+          git add -A
+          GIT_EDITOR=true git cherry-pick --continue || \
+            git commit -m "WIP: Cherry-pick with unresolved conflicts from #${{ needs.cherrypick.outputs.pr_number }}"
+          git push --set-upstream origin ${{ needs.cherrypick.outputs.prbranch }}
+
+          REMAINING=$(grep -rl "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.js" 2>/dev/null || true)
+          echo "remaining_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$REMAINING" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create draft PR for unresolved conflicts
+        if: steps.check-markers.outputs.has_markers == 'true'
+        id: create-draft-pr
+        run: |
+          PR_URL=$(gh pr create --draft \
+            -t "(${{ needs.cherrypick.outputs.branch }}) ${{ needs.cherrypick.outputs.pr_title }}" \
+            -b "Cherry-pick of: #${{ needs.cherrypick.outputs.pr_number }}" \
+            --base "${{ needs.cherrypick.outputs.branch }}")
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment unresolved conflicts
+        if: steps.check-markers.outputs.has_markers == 'true'
+        uses: actions/github-script@v7
+        env:
+          REMAINING_FILES: ${{ steps.push-unresolved.outputs.remaining_files }}
+          TARGET_BRANCH: ${{ needs.cherrypick.outputs.branch }}
+          DRAFT_PR_URL: ${{ steps.create-draft-pr.outputs.pr_url }}
+        with:
+          script: |
+            const fileList = process.env.REMAINING_FILES.trim().split('\n').map(f => `- \`${f}\``).join('\n');
+            const body = [
+              `Cherry-pick to \`${process.env.TARGET_BRANCH}\` has conflicts that could not be fully resolved. :warning:`,
+              `Created draft PR: ${process.env.DRAFT_PR_URL}`,
+              '',
+              '**Files with remaining conflicts:**',
+              fileList,
+              '',
+              'Please resolve the remaining conflicts manually in the draft PR.',
+            ].join('\n');
+            github.rest.issues.createComment({
+              issue_number: ${{ needs.cherrypick.outputs.pr_number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
