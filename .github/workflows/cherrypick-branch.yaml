@@ -97,7 +97,7 @@ jobs:
         run: |
           gh pr create -t "(${{ env.branch }}) ${PR_TITLE}" -b "Cherry-pick of: #${{ github.event.issue.number }}" --base "${{ env.branch }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           PR_TITLE: ${{ github.event.issue.title }}
 
       - name: Message success
@@ -164,7 +164,7 @@ jobs:
         run: |
           gh pr diff ${{ needs.cherrypick.outputs.pr_number }} > /tmp/original-pr.diff
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Resolve conflicts with Claude Code
         id: claude
@@ -237,7 +237,7 @@ jobs:
             --base "${{ needs.cherrypick.outputs.branch }}")
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Comment AI-resolved success
         if: steps.check-markers.outputs.has_markers == 'false'
@@ -294,7 +294,7 @@ jobs:
             --base "${{ needs.cherrypick.outputs.branch }}")
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Comment unresolved conflicts
         if: steps.check-markers.outputs.has_markers == 'true'
