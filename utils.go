@@ -2,12 +2,17 @@ package main
 
 import "strings"
 
-// Sanitize cleans user input.
-func Sanitize(input string) string {
-	return strings.TrimSpace(input)
+// SanitizeInput cleans and normalizes user input.
+func SanitizeInput(input string) string {
+	return strings.ToLower(strings.TrimSpace(input))
 }
 
-// Validate checks if input is non-empty.
-func Validate(input string) bool {
-	return len(strings.TrimSpace(input)) > 0
+// ValidateInput checks if input is non-empty after sanitization.
+func ValidateInput(input string) bool {
+	return len(SanitizeInput(input)) > 0
+}
+
+// ValidateLength checks if input meets minimum length requirement.
+func ValidateLength(input string, minLen int) bool {
+	return len(strings.TrimSpace(input)) >= minLen
 }

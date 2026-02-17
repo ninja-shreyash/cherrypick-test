@@ -4,26 +4,28 @@ import "fmt"
 
 // Config holds application configuration.
 type Config struct {
-	Name    string
-	Version string
-	Debug   bool
+	AppName    string
+	AppVersion string
+	DebugMode  bool
+	LogLevel   string
 }
 
 // NewConfig creates a default configuration.
 func NewConfig() *Config {
 	return &Config{
-		Name:    "app",
-		Version: "1.0.0",
-		Debug:   false,
+		AppName:    "myapp",
+		AppVersion: "1.0.1-release",
+		DebugMode:  false,
+		LogLevel:   "info",
 	}
 }
 
-// Print outputs the configuration.
-func Print(c *Config) {
-	fmt.Printf("Name: %s, Version: %s, Debug: %v\n", c.Name, c.Version, c.Debug)
+// PrintConfig outputs the configuration details.
+func PrintConfig(c *Config) {
+	fmt.Printf("App: %s v%s (debug=%v, log=%s)\n", c.AppName, c.AppVersion, c.DebugMode, c.LogLevel)
 }
 
 func main() {
 	c := NewConfig()
-	Print(c)
+	PrintConfig(c)
 }
