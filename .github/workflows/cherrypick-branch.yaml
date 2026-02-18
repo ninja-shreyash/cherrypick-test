@@ -198,17 +198,16 @@ jobs:
             1. Run `git status` to see all conflicting files
             2. Read /tmp/original-pr.diff to understand the original PR's intent
             3. For each conflicting file:
-               a. Read the file to see the conflict markers (<<<<<<< HEAD ... ======= ... >>>>>>> ...)
-               b. The HEAD side is the current state of `${{ needs.cherrypick.outputs.branch }}`
-               c. The incoming side is the change from the original PR
-               d. Resolve by applying the INTENT of the original PR onto the target branch's code
-               e. If target branch doesn't have code that the PR modified, add the PR's new code
-               f. If target branch has refactored/renamed things, adapt the PR's changes accordingly
-               g. Use the Edit tool to replace the conflicted section with the resolved code
-               h. Run `git add <file>` to mark it resolved
-            4. After all files, run: grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --exclude="cherrypick-branch.yaml"
-            5. If any markers remain, resolve those too
-            6. Do NOT run `git commit` — just resolve and stage all files
+               a. Read the file to see the conflict markers
+               b. The HEAD side (<<<<<<< HEAD) is the current state of `${{ needs.cherrypick.outputs.branch }}`
+               c. The incoming side (>>>>>>>) is the change from the original PR
+               d. ONLY resolve if you are confident about the correct resolution
+               e. If the conflict is mechanical (imports, adjacent lines, additive code), resolve it
+               f. If the conflict involves competing logic, different implementations, or you are unsure about the intent, LEAVE THE CONFLICT MARKERS IN PLACE and move to the next file
+               g. For files you resolve: use the Edit tool to replace the conflicted section, then run `git add <file>`
+               h. For files you skip: do NOT edit or stage them
+            4. Do NOT guess. It is better to leave a conflict unresolved than to resolve it incorrectly.
+            5. Do NOT run `git commit` — just resolve and stage the files you are confident about
           claude_args: >-
             --allowed-tools "Read,Edit,Grep,Glob,Bash(git diff:*),Bash(git add:*),Bash(git status:*),Bash(git log:*),Bash(grep:*)"
             --max-turns 30
