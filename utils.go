@@ -16,3 +16,8 @@ func ValidateInput(input string) bool {
 func ValidateLength(input string, minLen int) bool {
 	return len(strings.TrimSpace(input)) >= minLen
 }
+
+// ValidateEmail checks if input looks like an email.
+func ValidateEmail(input string) bool {
+	return strings.Contains(input, "@") && strings.Contains(input, ".")
+}
