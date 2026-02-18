@@ -206,7 +206,7 @@ jobs:
                f. If target branch has refactored/renamed things, adapt the PR's changes accordingly
                g. Use the Edit tool to replace the conflicted section with the resolved code
                h. Run `git add <file>` to mark it resolved
-            4. After all files, run: grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md"
+            4. After all files, run: grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --exclude="cherrypick-branch.yaml"
             5. If any markers remain, resolve those too
             6. Do NOT run `git commit` — just resolve and stage all files
           claude_args: >-
@@ -216,7 +216,7 @@ jobs:
       - name: Check for remaining conflict markers
         id: check-markers
         run: |
-          if grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.js" 2>/dev/null; then
+          if grep -r "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.js" --exclude="cherrypick-branch.yaml" 2>/dev/null; then
             echo "has_markers=true" >> $GITHUB_OUTPUT
           else
             echo "has_markers=false" >> $GITHUB_OUTPUT
@@ -286,7 +286,7 @@ jobs:
           git diff --cached --quiet || git commit -m "WIP: Cherry-pick with unresolved conflicts from #${{ needs.cherrypick.outputs.pr_number }}"
           git push --set-upstream origin ${{ needs.cherrypick.outputs.prbranch }}
 
-          REMAINING=$(grep -rl "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.js" 2>/dev/null || true)
+          REMAINING=$(grep -rl "<<<<<<< " . --include="*.go" --include="*.yaml" --include="*.json" --include="*.yml" --include="*.md" --include="*.tsx" --include="*.ts" --include="*.js" --exclude="cherrypick-branch.yaml" 2>/dev/null || true)
           echo "remaining_files<<EOF" >> $GITHUB_OUTPUT
           echo "$REMAINING" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
