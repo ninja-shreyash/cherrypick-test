@@ -63,7 +63,7 @@ jobs:
 
             After completing, output a summary of what happened (success, resolved conflicts, or unresolved conflicts).
           claude_args: >-
-            --allowed-tools "Read,Edit,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(grep:*)"
+            --dangerously-skip-permissions
             --max-turns 30
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
