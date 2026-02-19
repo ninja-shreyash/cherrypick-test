@@ -61,7 +61,7 @@ jobs:
             The repository is already checked out with full history and git auth is configured.
             Follow the skill instructions in .claude/skills/cherry-pick-ai/SKILL.md exactly.
 
-            After completing, output a summary of what happened (success, resolved conflicts, or unresolved conflicts).
+            After completing, write your final summary (using the Output Format from the skill) to the file /tmp/cherry-pick-result.md using the Write tool. This file will be used to post a comment on the PR.
           claude_args: >-
             --dangerously-skip-permissions
             --model claude-opus-4-6
@@ -78,13 +78,19 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         with:
           script: |
+            const fs = require('fs');
             const target = process.env.TARGET_BRANCH;
             const runUrl = process.env.RUN_URL;
             const status = process.env.JOB_STATUS;
 
             let body;
             if (status === 'success') {
-              body = `Cherry-pick AI to \`${target}\` completed. Check the [workflow run](${runUrl}) for details.`;
+              try {
+                const summary = fs.readFileSync('/tmp/cherry-pick-result.md', 'utf8').trim();
+                body = summary + `\n\n[Workflow run](${runUrl})`;
+              } catch {
+                body = `Cherry-pick AI to \`${target}\` completed. Check the [workflow run](${runUrl}) for details.`;
+              }
             } else {
               body = `Cherry-pick AI to \`${target}\` failed. Check the [workflow run](${runUrl}) for errors.`;
             }
