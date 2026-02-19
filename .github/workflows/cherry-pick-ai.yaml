@@ -64,6 +64,7 @@ jobs:
             After completing, output a summary of what happened (success, resolved conflicts, or unresolved conflicts).
           claude_args: >-
             --dangerously-skip-permissions
+            --model claude-opus-4-6
             --max-turns 30
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
