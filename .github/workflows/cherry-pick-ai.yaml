@@ -1,0 +1,96 @@
+---
+# AI-powered cherry-pick workflow with automatic conflict resolution
+# Uses the /cherry-pick-ai Claude Code skill for the heavy lifting
+# Workflow is initiated when the following comment is created in the pull request:
+# /cherry-pick-ai <base-branch> or /cherrypick-ai <base-branch>
+# The specified base branch and the pull request branch must not be deleted
+name: Cherry-pick AI
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  cherry-pick-ai:
+    name: Cherry-pick with AI conflict resolution
+    if: >-
+      github.event.issue.pull_request &&
+      (contains(github.event.comment.body, '/cherrypick-ai') || contains(github.event.comment.body, '/cherry-pick-ai'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse target branch from comment
+        id: parse
+        run: |
+          body="$COMMENT_BODY"
+          stringarray=($body)
+          echo "target_branch=${stringarray[1]}" >> $GITHUB_OUTPUT
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Configure git auth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git config --global --add safe.directory /github/workspace
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+      - name: Run cherry-pick-ai skill
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Run the /cherry-pick-ai skill with these arguments:
+            - Target branch: ${{ steps.parse.outputs.target_branch }}
+            - PR number: ${{ github.event.issue.number }}
+
+            The repository is already checked out with full history and git auth is configured.
+            Follow the skill instructions in .claude/skills/cherry-pick-ai/SKILL.md exactly.
+
+            After completing, output a summary of what happened (success, resolved conflicts, or unresolved conflicts).
+          claude_args: >-
+            --allowed-tools "Read,Edit,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(grep:*)"
+            --max-turns 30
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment result on PR
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          TARGET_BRANCH: ${{ steps.parse.outputs.target_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const target = process.env.TARGET_BRANCH;
+            const runUrl = process.env.RUN_URL;
+            const status = process.env.JOB_STATUS;
+
+            let body;
+            if (status === 'success') {
+              body = `Cherry-pick AI to \`${target}\` completed. Check the [workflow run](${runUrl}) for details.`;
+            } else {
+              body = `Cherry-pick AI to \`${target}\` failed. Check the [workflow run](${runUrl}) for errors.`;
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
