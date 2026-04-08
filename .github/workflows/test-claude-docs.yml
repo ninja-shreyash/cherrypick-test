@@ -1,4 +1,4 @@
-name: Test Claude Docs (Broken)
+name: Test Claude Docs (Fixed)
 
 on:
   workflow_dispatch:
@@ -25,7 +25,5 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
-            contents: write
-            pull-requests: write
-            issues: write
+            actions: read
           prompt: "Echo hello world. Just respond with 'Hello from Claude!' and nothing else."
