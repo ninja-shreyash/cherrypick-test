@@ -5,7 +5,7 @@ description: Analyze recent PR review comments and update Claude documentation f
 
 # Enhance Claude Docs
 
-Analyzes PR review comments from `UiPath/uipath-typescript` and updates Claude documentation files (`CLAUDE.md`, `Agents.md`, `agent_docs/`) with documentation-worthy insights not already captured.
+Analyzes PR review comments from `ninja-shreyash/cherrypick-test` and updates Claude documentation files (`CLAUDE.md`) with documentation-worthy insights not already captured.
 
 ---
 
@@ -39,7 +39,7 @@ Store `START_DATE` and `END_DATE` for use in the PR body later.
 Fetch all PRs updated in the date range:
 
 ```bash
-gh api "repos/UiPath/uipath-typescript/pulls?state=all&sort=updated&direction=desc&per_page=100" \
+gh api "repos/ninja-shreyash/cherrypick-test/pulls?state=all&sort=updated&direction=desc&per_page=100" \
   --jq "[.[] | select(.updated_at >= \"${START_DATE}\") | {number, title, state, user: .user.login, updated_at}]"
 ```
 
@@ -56,7 +56,7 @@ Use GitHub's GraphQL API to fetch **review threads** (not individual comments) f
 ```bash
 gh api graphql -f query='
 {
-  repository(owner: "UiPath", name: "uipath-typescript") {
+  repository(owner: "ninja-shreyash", name: "cherrypick-test") {
     pullRequest(number: {pr_number}) {
       title
       state
@@ -106,13 +106,9 @@ Collect all remaining **resolved + effectively resolved** threads with their PR 
 
 ## Step 4: Read Current Documentation
 
-Read all five documentation files:
+Read the documentation file:
 
 1. `CLAUDE.md`
-2. `Agents.md`
-3. `agent_docs/architecture.md`
-4. `agent_docs/conventions.md`
-5. `agent_docs/rules.md`
 
 ---
 
@@ -136,11 +132,7 @@ For each thread that passes Stage 1, determine if it contains a documentation-wo
 
 | Signal | Target file |
 |--------|-------------|
-| Reviewer correcting a pattern violation not yet in rules | `agent_docs/rules.md` |
-| Explaining WHY a convention exists or should be followed | `agent_docs/conventions.md` |
-| New project structure info, service patterns, or architecture decisions | `agent_docs/architecture.md` |
-| New commands, quick-reference items, or workflow changes | `Agents.md` |
-| Top-level pointers or high-level project changes (rare) | `CLAUDE.md` |
+| Any documentation-worthy insight | `CLAUDE.md` |
 
 ### Ignore (skip these)
 
@@ -168,12 +160,8 @@ And stop. Do not create a PR.
 
 If actionable insights exist:
 
-1. For each insight, determine the correct file and section.
-2. Edit the files using the Edit tool. Follow existing formatting, heading levels, and conventions in each file.
-3. For `agent_docs/rules.md`, add new items under the appropriate "NEVER" subsection or create a new subsection if needed. Follow the existing pattern: bold "NEVER" + action, followed by explanation with rationale.
-4. For `agent_docs/conventions.md`, add to the relevant section or create a new subsection following existing patterns.
-5. For `agent_docs/architecture.md`, update tables or sections as appropriate.
-6. For `Agents.md`, update the quick reference or add new sections.
+1. For each insight, determine the correct section in `CLAUDE.md`.
+2. Edit the file using the Edit tool. Follow existing formatting, heading levels, and conventions.
 
 ---
 
@@ -182,13 +170,13 @@ If actionable insights exist:
 ### Check for existing PR
 
 ```bash
-gh pr list --repo UiPath/uipath-typescript --label "claude-docs-update" --state open --json number,headRefName
+gh pr list --repo ninja-shreyash/cherrypick-test --label "claude-docs-update" --state open --json number,headRefName
 ```
 
 ### Ensure label exists
 
 ```bash
-gh label create "claude-docs-update" --repo UiPath/uipath-typescript --description "Auto-generated Claude docs update from PR review analysis" --color "0E8A16" 2>/dev/null || true
+gh label create "claude-docs-update" --repo ninja-shreyash/cherrypick-test --description "Auto-generated Claude docs update from PR review analysis" --color "0E8A16" 2>/dev/null || true
 ```
 
 ### Branch naming
@@ -214,10 +202,10 @@ BRANCH_NAME="claude-docs-update/$(date +%Y-%m-%d)"
 
 ```bash
 gh pr create \
-  --repo UiPath/uipath-typescript \
+  --repo ninja-shreyash/cherrypick-test \
   --title "docs: update Claude docs from PR review analysis" \
   --label "claude-docs-update" \
-  --reviewer "shreyash0502" \
+  --reviewer "ninja-shreyash" \
   --body "$(cat <<'EOF'
 ## Summary
 Weekly analysis of PR comments ({START_DATE} -> {END_DATE}).
