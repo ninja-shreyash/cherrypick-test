@@ -1,0 +1,31 @@
+name: Test Claude Docs (Broken)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Test Claude action
+        id: claude
+        uses: anthropics/claude-code-action@094bd24d575e7b30ac1576024817bf1a97c81262 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            contents: write
+            pull-requests: write
+            issues: write
+          prompt: "Echo hello world. Just respond with 'Hello from Claude!' and nothing else."
