@@ -6,6 +6,10 @@ on:
 
 jobs:
   claude-review:
+    # Opt-out: PR authors can apply the `skip-claude-review` label to suppress
+    # the bot on subsequent commits. Removing the label re-enables review on
+    # the next push.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-claude-review') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
