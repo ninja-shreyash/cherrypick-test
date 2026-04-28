@@ -46,11 +46,18 @@ jobs:
           ADO_PAT: ${{ secrets.ADO_PAT }}
           CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
         run: |
-          echo "[DRY RUN] Would trigger ADO pipeline 17960 with:"
-          echo "  environmentName: ${{ matrix.environment }}"
-          echo "  cloudFlareAccountId: $CF_ACCOUNT_ID"
-          echo "  ADO_PAT is set: $([ -n "$ADO_PAT" ] && echo 'yes' || echo 'no (expected in test)')"
+          RESPONSE=$(curl -sf -X POST \
+            "https://dev.azure.com/uipath/BusinessApplications/_apis/pipelines/17960/runs?api-version=7.1" \
+            -H "Authorization: Basic $(echo -n ":$ADO_PAT" | base64 -w 0)" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"templateParameters\": {
+                \"environmentName\": \"${{ matrix.environment }}\",
+                \"cloudFlareAccountId\": \"$CF_ACCOUNT_ID\"
+              }
+            }")
 
+          RUN_ID=$(echo "$RESPONSE" | jq -r '.id')
           echo "### CF Worker Deploy - ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- [DRY RUN] Would trigger ADO Pipeline 17960" >> $GITHUB_STEP_SUMMARY
-          echo "- Environment: ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ADO Pipeline Run ID: $RUN_ID" >> $GITHUB_STEP_SUMMARY
+          echo "- [View Run](https://uipath.visualstudio.com/BusinessApplications/_build/results?buildId=$RUN_ID)" >> $GITHUB_STEP_SUMMARY
