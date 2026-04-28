@@ -44,7 +44,7 @@ jobs:
       - name: Trigger ADO Pipeline (${{ matrix.environment }})
         env:
           ADO_PAT: ${{ secrets.ADO_PAT }}
-          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: |
           RESPONSE=$(curl -sf -X POST \
             "https://dev.azure.com/uipath/BusinessApplications/_apis/pipelines/17960/runs?api-version=7.1" \
