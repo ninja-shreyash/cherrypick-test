@@ -1,0 +1,56 @@
+name: Deploy API CORS Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      environments:
+        description: "Comma-separated environments to deploy (development,staging,production)"
+        required: true
+        default: "staging,production"
+
+  push:
+    branches: [main]
+    paths:
+      - "CFWorkers/ApiCorsWorker/**"
+      - ".github/workflows/deploy-api-cors.yml"
+
+permissions: {}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set environment matrix
+        id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo 'matrix=["development"]' >> "$GITHUB_OUTPUT"
+          else
+            IFS=',' read -ra ENVS <<< "${{ github.event.inputs.environments }}"
+            JSON=$(printf '%s\n' "${ENVS[@]}" | jq -R . | jq -s -c .)
+            echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Trigger ADO Pipeline (${{ matrix.environment }})
+        env:
+          ADO_PAT: ${{ secrets.ADO_PAT }}
+          CF_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+        run: |
+          echo "[DRY RUN] Would trigger ADO pipeline 17960 with:"
+          echo "  environmentName: ${{ matrix.environment }}"
+          echo "  cloudFlareAccountId: $CF_ACCOUNT_ID"
+          echo "  ADO_PAT is set: $([ -n "$ADO_PAT" ] && echo 'yes' || echo 'no (expected in test)')"
+
+          echo "### CF Worker Deploy - ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- [DRY RUN] Would trigger ADO Pipeline 17960" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
