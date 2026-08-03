@@ -1,0 +1,94 @@
+name: Release trigger wiring test
+
+# Wiring-faithful replica of uipath-typescript's export-airgap-bundle.yml:
+# same trigger, job-output plumbing, dynamic artifact names, and release
+# upload — with the npm-heavy build stubbed out. Validates that publishing
+# a DRAFT release fires `release: published` and assets attach back onto
+# the firing release.
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build bundle (stub)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sdk_version: ${{ steps.meta.outputs.sdk_version }}
+      bundle_name: ${{ steps.meta.outputs.bundle_name }}
+    steps:
+      # Mirrors the real build: tag -> env -> "script" -> manifest.json
+      - name: Build bundle
+        env:
+          OUT_DIR: ${{ github.workspace }}/airgap-bundle
+          SDK_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir -p "$OUT_DIR"
+          echo "fake tarball" > "$OUT_DIR/uipath-uipath-typescript-${SDK_VERSION}.tgz"
+          cat > "$OUT_DIR/manifest.json" <<MANIFEST
+          {"roots": [{"name": "@uipath/uipath-typescript", "version": "${SDK_VERSION}"}], "packages": [{"name": "@uipath/uipath-typescript", "version": "${SDK_VERSION}"}]}
+          MANIFEST
+
+      - name: Resolve bundle metadata
+        id: meta
+        run: |
+          SDK_VERSION=$(jq -r '.roots[] | select(.name == "@uipath/uipath-typescript").version' airgap-bundle/manifest.json)
+          echo "sdk_version=$SDK_VERSION" >> "$GITHUB_OUTPUT"
+          echo "bundle_name=uipath-sdk-airgap-bundle-${SDK_VERSION}" >> "$GITHUB_OUTPUT"
+          jq -r '"- Tarballs: \(.packages | length)"' airgap-bundle/manifest.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.bundle_name }}
+          if-no-files-found: error
+          retention-days: 1
+          path: airgap-bundle/
+
+  verify:
+    name: Verify bundle (stub)
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Download bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.bundle_name }}
+          path: airgap-bundle
+
+      - name: Assert artifact plumbing
+        env:
+          SDK_VERSION: ${{ needs.build.outputs.sdk_version }}
+        run: |
+          test -f "airgap-bundle/manifest.json"
+          test -f "airgap-bundle/uipath-uipath-typescript-${SDK_VERSION}.tgz"
+          echo "artifact plumbing OK for $SDK_VERSION"
+
+  attach:
+    name: Attach assets to release
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.bundle_name }}
+          path: airgap-bundle
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          BUNDLE_NAME: ${{ needs.build.outputs.bundle_name }}
+        run: |
+          (cd airgap-bundle && zip -qr "${GITHUB_WORKSPACE}/${BUNDLE_NAME}.zip" .)
+          gh release upload "$TAG_NAME" "${BUNDLE_NAME}.zip" --clobber --repo "$GITHUB_REPOSITORY"
+          echo "- Attached \`${BUNDLE_NAME}.zip\` to release \`${TAG_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
